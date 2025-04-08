@@ -83,7 +83,8 @@ jobs:
             --capabilities CAPABILITY_IAM \
             --no-confirm-changeset \
             --no-fail-on-empty-changeset \
-            --s3-prefix "eda-sam-${{ steps.determine-env.outputs.env }}" \
+            --resolve-s3 \
+            --s3-prefix ${{ steps.determine-env.outputs.env }} \
             --parameter-overrides \
               Environment=${{ steps.determine-env.outputs.env }} \
               EmailAddress=${{ steps.params.outputs.email_address }}
