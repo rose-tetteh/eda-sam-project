@@ -16,6 +16,9 @@ lint = true
 capabilities = "CAPABILITY_IAM"
 confirm_changeset = true
 resolve_s3 = true
+s3_prefix = "eda-sam-project"
+region = "eu-west-1"
+image_repositories = []
 
 [default.package.parameters]
 resolve_s3 = true
@@ -28,3 +31,21 @@ warm_containers = "EAGER"
 
 [default.local_start_lambda.parameters]
 warm_containers = "EAGER"
+
+# Development environment config
+[dev.deploy.parameters]
+stack_name = "eda-sam-dev"
+s3_prefix = "eda-sam-dev"
+parameter_overrides = "Environment=\"dev\""
+region = "eu-west-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = false
+
+# Production environment config
+[prod.deploy.parameters]
+stack_name = "eda-sam-prod"
+s3_prefix = "eda-sam-prod"
+parameter_overrides = "Environment=\"prod\""
+region = "eu-west-1"
+capabilities = "CAPABILITY_IAM"
+confirm_changeset = true

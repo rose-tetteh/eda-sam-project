@@ -1,67 +1,90 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
+Description: S3 Event-Driven Architecture with Lambda & SNS
 
+# Parameters to support different environments
 Parameters:
   Environment:
     Type: String
-    AllowedValues: [dev, prod]
-    Description: The deployment environment (dev or prod)
-  Email1:
-    Type: String
-    Description: First email address for SNS subscription
-  Email2:
-    Type: String
-    Description: Second email address for SNS subscription
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+    Description: Deployment environment (dev or prod)
 
+  EmailAddress:
+    Type: String
+    Description: Email address to receive notifications
+
+# Resources for our application
 Resources:
-  # S3 Bucket
-  S3Bucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub 'my-eda-app-bucket-${Environment}'
-
-  # SNS Topic
-  SNSTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: !Sub 'my-eda-app-topic-${Environment}'
-
-  # SNS Subscriptions
-  Subscription1:
-    Type: AWS::SNS::Subscription
-    Properties:
-      Protocol: email
-      Endpoint: !Ref Email1
-      TopicArn: !Ref SNSTopic
-
-  Subscription2:
-    Type: AWS::SNS::Subscription
-    Properties:
-      Protocol: email
-      Endpoint: !Ref Email2
-      TopicArn: !Ref SNSTopic
-
-  # Lambda Function
-  LambdaFunction:
+  # Lambda function to process uploads
+  FileUploadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: com.example.eventDA-app.LambdaHandler::handleRequest
+      FunctionName: !Sub file-upload-processor-${Environment}
+      CodeUri: HelloWorldFunction/
+      Handler: helloworld.App
       Runtime: java21
-      CodeUri: ./eventDA-app
       MemorySize: 512
       Timeout: 30
       Environment:
         Variables:
-          SNS_TOPIC_ARN: !Ref SNSTopic
-      Events:
-        S3Event:
-          Type: S3
-          Properties:
-            Bucket: !Ref S3Bucket
-            Events: s3:ObjectCreated:*
+          SNS_TOPIC_ARN: !Ref NotificationTopic
+          ENVIRONMENT: !Ref Environment
       Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action: 'sns:Publish'
-              Resource: !Ref SNSTopic
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt NotificationTopic.TopicName
+        - S3ReadPolicy:
+            BucketName: !Sub s3-upload-bucket-${Environment}-${AWS::AccountId}
+
+  # SNS Topic for notifications
+  NotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub file-upload-notifications-${Environment}
+      DisplayName: !Sub "File Upload Notifications - ${Environment}"
+
+  # SNS Subscription for email
+  EmailNotificationSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Protocol: email
+      Endpoint: !Ref EmailAddress
+      TopicArn: !Ref NotificationTopic
+
+  # Lambda permission to allow S3 to invoke it
+  FileUploadPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FileUploadFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::s3-upload-bucket-${Environment}-${AWS::AccountId}
+      SourceAccount: !Ref AWS::AccountId
+
+  # S3 Bucket for file uploads
+  UploadBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: FileUploadPermission
+    Properties:
+      BucketName: !Sub s3-upload-bucket-${Environment}-${AWS::AccountId}
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt FileUploadFunction.Arn
+
+
+# Outputs for easy reference
+Outputs:
+  UploadBucketName:
+    Description: Name of the S3 bucket for file uploads
+    Value: !Ref UploadBucket
+
+  NotificationTopicArn:
+    Description: ARN of the SNS topic for notifications
+    Value: !Ref NotificationTopic
+
+  LambdaFunctionName:
+    Description: Name of the Lambda function processing uploads
+    Value: !Ref FileUploadFunction
