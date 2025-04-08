@@ -1,0 +1,95 @@
+name: Deploy SAM Application
+
+on:
+  push:
+    branches:
+      - main  # Only trigger on main branch pushes
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - prod
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_REGION: eu-west-1
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'corretto'
+          java-version: '21'
+      
+      - name: Determine environment
+        id: determine-env
+        run: |
+          # If triggered by workflow_dispatch, use the input environment
+          # If triggered by push, default to dev
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ENV="${{ github.event.inputs.environment }}"
+          else
+            ENV="dev"  # Default to dev on push to main
+          fi
+          echo "env=$ENV" >> $GITHUB_OUTPUT
+          echo "Deploying to $ENV environment"
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Install AWS SAM CLI
+        run: |
+          pip install aws-sam-cli
+          sam --version
+      
+      - name: Build SAM application
+        run: sam build --use-container
+      
+      - name: Get deployment parameters
+        id: params
+        run: |
+          # Set environment-specific variables
+          if [ "${{ steps.determine-env.outputs.env }}" = "dev" ]; then
+            echo "stack_name=eda-sam-dev" >> $GITHUB_OUTPUT
+            echo "email_address=${{ secrets.DEV_EMAIL1 }}" >> $GITHUB_OUTPUT
+          else
+            echo "stack_name=eda-sam-prod" >> $GITHUB_OUTPUT
+            echo "email_address=${{ secrets.PROD_EMAIL1 }}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Deploy SAM application
+        run: |
+          sam deploy \
+            --stack-name ${{ steps.params.outputs.stack_name }} \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --resolve-s3 \
+            --s3-prefix ${{ steps.determine-env.outputs.env }} \
+            --parameter-overrides \
+              Environment=${{ steps.determine-env.outputs.env }} \
+              EmailAddress=${{ steps.params.outputs.email_address }}
+      
+      - name: Deployment Summary
+        run: |
+          echo "Successfully deployed to ${{ steps.determine-env.outputs.env }} environment"
+          echo "Stack name: ${{ steps.params.outputs.stack_name }}"
