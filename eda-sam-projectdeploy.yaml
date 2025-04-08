@@ -1,0 +1,5 @@
+template-file-path: template.yaml
+parameters:
+  Environment: dev
+  EmailAddress: rose.tetteh@amalitech.com
+tags: {}
