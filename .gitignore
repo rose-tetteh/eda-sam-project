@@ -1,5 +1,5 @@
 # Default ignored files
 /shelf/
-/workspace.xml
-.aws-sam/
+/.idea/workspace.xml
 target/
+.aws-sam/
